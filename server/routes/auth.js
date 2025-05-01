@@ -5,38 +5,33 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const auth = require("../middleware/auth");
 
+// Signup
 router.post("/signup", async (req, res) => {
-  const { name, email, password, confirmPassword, role } = req.body;
-
-  if (password !== confirmPassword) {
-    return res.status(400).json({ message: "Passwords do not match" });
-  }
+  const { name, email, password, role } = req.body;
 
   try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "Email already exists" });
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ message: "User already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword, role });
+    user = new User({
+      name,
+      email,
+      password: await bcrypt.hash(password, 10),
+      role: role.toLowerCase(),
+    });
+
     await user.save();
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1h",
-      }
-    );
-
-    res.status(201).json({ token, role: user.role });
+    res.status(201).json({ message: "User created successfully" });
   } catch (error) {
     console.error("Signup error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
+// Signin
 router.post("/signin", async (req, res) => {
   const { email, password } = req.body;
 
@@ -51,7 +46,6 @@ router.post("/signin", async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    // Update login status and time
     user.isLoggedIn = true;
     user.lastLoginTime = new Date();
     await user.save();
@@ -59,30 +53,24 @@ router.post("/signin", async (req, res) => {
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
-      {
-        expiresIn: "1h",
-      }
+      { expiresIn: "1h" }
     );
 
-    res.json({ token, role: user.role });
+    res.json({ token });
   } catch (error) {
     console.error("Signin error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// New logout endpoint
+// Logout
 router.post("/logout", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    if (user) {
+      user.isLoggedIn = false;
+      await user.save();
     }
-
-    user.isLoggedIn = false;
-    user.lastLoginTime = null;
-    await user.save();
-
     res.json({ message: "Logged out successfully" });
   } catch (error) {
     console.error("Logout error:", error);
@@ -90,20 +78,13 @@ router.post("/logout", auth, async (req, res) => {
   }
 });
 
-// Fetch waiter and kitchen users
+// Get all users (for dashboards)
 router.get("/users", auth, async (req, res) => {
   try {
-    if (req.user.role !== "reception") {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    const users = await User.find({ role: { $in: ["waiter", "kitchen"] } })
-      .select("name email role isLoggedIn lastLoginTime")
-      .lean();
-
+    const users = await User.find().select("-password");
     res.json(users);
   } catch (error) {
-    console.error("Fetch users error:", error);
+    console.error("Get users error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });

@@ -12,9 +12,7 @@ const KitchenDashboard = () => {
           "/api/auth/logout",
           {},
           {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
           }
         );
       }

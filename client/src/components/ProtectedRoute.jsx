@@ -1,6 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { jwtDecode } from "jwt-decode"; // Use named import
+import { jwtDecode } from "jwt-decode";
 
 const ProtectedRoute = ({ children, role }) => {
   const [isAuthorized, setIsAuthorized] = useState(null);
@@ -8,6 +8,7 @@ const ProtectedRoute = ({ children, role }) => {
   useEffect(() => {
     const checkAuth = () => {
       const token = localStorage.getItem("token");
+      console.log("ProtectedRoute token:", token); // Debug token
       if (!token) {
         console.log("No token found");
         setIsAuthorized(false);
@@ -17,7 +18,9 @@ const ProtectedRoute = ({ children, role }) => {
       try {
         const decoded = jwtDecode(token);
         console.log("Decoded token:", decoded);
-        if (decoded.role === role && decoded.exp * 1000 > Date.now()) {
+        const isExpired = decoded.exp * 1000 < Date.now();
+        console.log("Token expired:", isExpired, "Expected role:", role);
+        if (decoded.role.toLowerCase() === role.toLowerCase() && !isExpired) {
           setIsAuthorized(true);
         } else {
           console.log("Role mismatch or token expired:", decoded.role, role);
