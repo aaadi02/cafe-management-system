@@ -1,11 +1,29 @@
 import { useNavigate } from "react-router-dom";
+import axios from "../api/axios";
 
 const KitchenDashboard = () => {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    navigate("/signin", { replace: true });
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        await axios.post(
+          "/api/auth/logout",
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      localStorage.removeItem("token");
+      navigate("/signin", { replace: true });
+    }
   };
 
   return (

@@ -10,6 +10,8 @@ const userSchema = new mongoose.Schema(
       required: true,
       enum: ["reception", "waiter", "kitchen"],
     },
+    isLoggedIn: { type: Boolean, default: false },
+    lastLoginTime: { type: Date, default: null },
   },
   { timestamps: true }
 );
