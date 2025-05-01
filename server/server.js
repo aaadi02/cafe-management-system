@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const authRoutes = require("./routes/auth");
 const tableRoutes = require("./routes/Tables");
+const menuRoutes = require("./routes/menu"); // Add this
 
 const app = express();
 
@@ -18,6 +19,7 @@ mongoose
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tables", tableRoutes);
+app.use("/api/menu", menuRoutes); // Add this
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -18,8 +18,11 @@ const tableSchema = new mongoose.Schema(
     },
     orders: [
       {
-        itemName: { type: String, required: true },
-        price: { type: Number, required: true },
+        menuItemId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Menu",
+          required: true,
+        },
         quantity: { type: Number, required: true },
         waiterId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       },

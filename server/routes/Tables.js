@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Table = require("../models/Table");
 const User = require("../models/User");
+const Menu = require("../models/Menu");
 const auth = require("../middleware/auth");
 
 // Create a new table (reception only)
@@ -61,10 +62,9 @@ router.put("/:id", auth, async (req, res) => {
     }
 
     await table.save();
-    const populatedTable = await Table.findById(req.params.id).populate(
-      "waiterId",
-      "name"
-    );
+    const populatedTable = await Table.findById(req.params.id)
+      .populate("waiterId", "name")
+      .populate("orders.menuItemId", "name price category");
     res.json(populatedTable);
   } catch (error) {
     console.error("Update table error:", error);
@@ -100,7 +100,7 @@ router.delete("/:id", auth, async (req, res) => {
 
 // Add order to a table (waiter only)
 router.post("/:id/orders", auth, async (req, res) => {
-  const { itemName, price, quantity, waiterId } = req.body;
+  const { menuItemId, quantity, waiterId } = req.body;
 
   if (req.user.role.toLowerCase() !== "waiter") {
     return res.status(403).json({ message: "Access denied" });
@@ -121,14 +121,18 @@ router.post("/:id/orders", auth, async (req, res) => {
       return res.status(400).json({ message: "Invalid or unavailable waiter" });
     }
 
-    table.orders.push({ itemName, price, quantity, waiterId });
-    table.totalBill += price * quantity;
+    const menuItem = await Menu.findById(menuItemId);
+    if (!menuItem) {
+      return res.status(400).json({ message: "Menu item not found" });
+    }
+
+    table.orders.push({ menuItemId, quantity, waiterId });
+    table.totalBill += menuItem.price * quantity;
     await table.save();
 
-    const populatedTable = await Table.findById(req.params.id).populate(
-      "waiterId",
-      "name"
-    );
+    const populatedTable = await Table.findById(req.params.id)
+      .populate("waiterId", "name")
+      .populate("orders.menuItemId", "name price category");
     res.json(populatedTable);
   } catch (error) {
     console.error("Add order error:", error);
@@ -175,7 +179,7 @@ router.get("/", auth, async (req, res) => {
   try {
     const tables = await Table.find()
       .populate("waiterId", "name")
-      .populate("orders.waiterId", "name");
+      .populate("orders.menuItemId", "name price category");
     res.json(tables);
   } catch (error) {
     console.error("Get tables error:", error);

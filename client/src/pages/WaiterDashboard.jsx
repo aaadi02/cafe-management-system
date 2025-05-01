@@ -6,34 +6,73 @@ import axios from "../api/axios";
 const WaiterDashboard = () => {
   const navigate = useNavigate();
   const [tables, setTables] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedTable, setSelectedTable] = useState(null);
   const [customerName, setCustomerName] = useState("");
-  const [order, setOrder] = useState({ itemName: "", price: "", quantity: "" });
+  const [order, setOrder] = useState({ menuItemId: "", quantity: "" });
 
   const fetchTables = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No token found");
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) throw new Error("Token expired");
+      if (decoded.role.toLowerCase() !== "waiter")
+        throw new Error("Invalid role");
 
       const response = await axios.get("/api/tables", {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       setTables(response.data);
     } catch (err) {
       console.error("Fetch tables error:", err);
-      setError(err.response?.data?.message || "Failed to fetch tables");
+      setError(
+        err.message || err.response?.data?.message || "Failed to fetch tables"
+      );
+      if (
+        err.message === "No token found" ||
+        err.message === "Token expired" ||
+        err.message === "Invalid role"
+      ) {
+        localStorage.removeItem("token");
+        navigate("/signin", { replace: true });
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchMenu = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No token found");
+      const decoded = jwtDecode(token);
+      if (decoded.exp * 1000 < Date.now()) throw new Error("Token expired");
+      if (decoded.role.toLowerCase() !== "waiter")
+        throw new Error("Invalid role");
+
+      const response = await axios.get("/api/menu", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setMenuItems(response.data);
+    } catch (err) {
+      console.error("Fetch menu error:", err);
+      setError(
+        err.message || err.response?.data?.message || "Failed to fetch menu"
+      );
+    }
+  };
+
   useEffect(() => {
     fetchTables();
-    const interval = setInterval(fetchTables, 5000); // Poll every 5 seconds
+    fetchMenu();
+    const interval = setInterval(() => {
+      fetchTables();
+      fetchMenu();
+    }, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
   }, []);
 
@@ -59,7 +98,9 @@ const WaiterDashboard = () => {
       fetchTables();
     } catch (err) {
       console.error("Assign waiter error:", err);
-      setError(err.response?.data?.message || "Failed to assign waiter");
+      setError(
+        err.response?.data?.message || err.message || "Failed to assign waiter"
+      );
     }
   };
 
@@ -83,7 +124,11 @@ const WaiterDashboard = () => {
       fetchTables();
     } catch (err) {
       console.error("Update customer name error:", err);
-      setError(err.response?.data?.message || "Failed to update customer name");
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to update customer name"
+      );
     }
   };
 
@@ -98,8 +143,7 @@ const WaiterDashboard = () => {
       await axios.post(
         `/api/tables/${selectedTable._id}/orders`,
         {
-          itemName: order.itemName,
-          price: parseFloat(order.price),
+          menuItemId: order.menuItemId,
           quantity: parseInt(order.quantity),
           waiterId,
         },
@@ -108,11 +152,13 @@ const WaiterDashboard = () => {
         }
       );
 
-      setOrder({ itemName: "", price: "", quantity: "" });
+      setOrder({ menuItemId: "", quantity: "" });
       fetchTables();
     } catch (err) {
       console.error("Add order error:", err);
-      setError(err.response?.data?.message || "Failed to add order");
+      setError(
+        err.response?.data?.message || err.message || "Failed to add order"
+      );
     }
   };
 
@@ -149,6 +195,37 @@ const WaiterDashboard = () => {
       </div>
 
       <div className="bg-white p-6 rounded shadow-md mb-6">
+        <h2 className="text-xl font-semibold mb-4">Menu</h2>
+        {error && <p className="text-red-500 mb-4">{error}</p>}
+        {menuItems.length === 0 ? (
+          <p>No menu items available.</p>
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Food</h3>
+              {menuItems
+                .filter((item) => item.category === "Food")
+                .map((item) => (
+                  <div key={item._id} className="p-2 bg-gray-50 rounded mb-2">
+                    {item.name} - ₹{item.price.toFixed(2)}
+                  </div>
+                ))}
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Drinks</h3>
+              {menuItems
+                .filter((item) => item.category === "Drinks")
+                .map((item) => (
+                  <div key={item._id} className="p-2 bg-gray-50 rounded mb-2">
+                    {item.name} - ₹{item.price.toFixed(2)}
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded shadow-md mb-6">
         <h2 className="text-xl font-semibold mb-4">Tables</h2>
         {error && <p className="text-red-500 mb-4">{error}</p>}
         {tables.length === 0 ? (
@@ -175,6 +252,17 @@ const WaiterDashboard = () => {
                 <p>
                   <strong>Total Bill:</strong> ₹{table.totalBill.toFixed(2)}
                 </p>
+                <p>
+                  <strong>Orders:</strong>
+                </p>
+                <ul className="list-disc pl-5">
+                  {table.orders.map((order, index) => (
+                    <li key={index}>
+                      {order.menuItemId?.name} - ₹
+                      {order.menuItemId?.price.toFixed(2)} x {order.quantity}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
@@ -216,31 +304,23 @@ const WaiterDashboard = () => {
               <form onSubmit={handleOrderSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    Item Name
+                    Menu Item
                   </label>
-                  <input
-                    type="text"
-                    value={order.itemName}
+                  <select
+                    value={order.menuItemId}
                     onChange={(e) =>
-                      setOrder({ ...order, itemName: e.target.value })
+                      setOrder({ ...order, menuItemId: e.target.value })
                     }
                     className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
                     required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Price
-                  </label>
-                  <input
-                    type="number"
-                    value={order.price}
-                    onChange={(e) =>
-                      setOrder({ ...order, price: e.target.value })
-                    }
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                    required
-                  />
+                  >
+                    <option value="">Select an item</option>
+                    {menuItems.map((item) => (
+                      <option key={item._id} value={item._id}>
+                        {item.name} ({item.category}) - ₹{item.price.toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">

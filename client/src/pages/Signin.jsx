@@ -22,15 +22,20 @@ const Signin = () => {
       if (!token) {
         throw new Error("No token received from server");
       }
-      // Clear old token
       localStorage.removeItem("token");
       localStorage.setItem("token", token);
-      // Navigate based on role
       const decoded = jwtDecode(token);
       console.log("Decoded token after signin:", decoded);
-      navigate(
-        decoded.role.toLowerCase() === "reception" ? "/reception" : "/waiter"
-      );
+      const role = decoded.role.toLowerCase();
+      if (role === "reception") {
+        navigate("/reception");
+      } else if (role === "waiter") {
+        navigate("/waiter");
+      } else if (role === "kitchen") {
+        navigate("/kitchen");
+      } else {
+        throw new Error("Invalid role");
+      }
     } catch (err) {
       console.error("Signin error:", err, {
         status: err.response?.status,
@@ -77,12 +82,6 @@ const Signin = () => {
           </button>
           {error && <p className="text-red-500 mt-4">{error}</p>}
         </form>
-        <p className="mt-4 text-center">
-          Don't have an account?{" "}
-          <a href="/signup" className="text-blue-500">
-            Signup
-          </a>
-        </p>
       </div>
     </div>
   );
