@@ -1,188 +1,77 @@
 const express = require("express");
 const router = express.Router();
-const Table = require("../models/Table");
-const User = require("../models/User");
-const Menu = require("../models/Menu");
 const auth = require("../middleware/auth");
+const Table = require("../models/Table");
 
-// Create a new table (reception only)
-router.post("/", auth, async (req, res) => {
-  const { tableNumber } = req.body;
-
-  if (req.user.role.toLowerCase() !== "reception") {
-    return res.status(403).json({ message: "Access denied" });
-  }
-
+// Get all tables
+router.get("/", auth, async (req, res) => {
   try {
-    const existingTable = await Table.findOne({ tableNumber });
-    if (existingTable) {
-      return res.status(400).json({ message: "Table number already exists" });
+    // Allow reception, waiter, and kitchen roles
+    if (!["reception", "waiter", "kitchen"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Unauthorized" });
     }
-
-    const table = new Table({ tableNumber });
-    await table.save();
-
-    res.status(201).json(table);
-  } catch (error) {
-    console.error("Create table error:", error);
+    const tables = await Table.find().populate("waiterId");
+    res.json(tables);
+  } catch (err) {
+    console.error("Fetch tables error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// Update table details (waiter only: assign waiter, customer name)
-router.put("/:id", auth, async (req, res) => {
-  const { customerName, waiterId } = req.body;
-
-  if (req.user.role.toLowerCase() !== "waiter") {
-    return res.status(403).json({ message: "Access denied" });
+// Create a table (reception only)
+router.post("/", auth, async (req, res) => {
+  if (req.user.role !== "reception") {
+    return res.status(403).json({ message: "Unauthorized" });
   }
+  try {
+    const { tableNumber } = req.body;
+    if (!tableNumber) {
+      return res.status(400).json({ message: "Table number is required" });
+    }
+    const table = new Table({ tableNumber });
+    await table.save();
+    res.status(201).json(table);
+  } catch (err) {
+    console.error("Create table error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
+// Update a table (reception or waiter)
+router.put("/:id", auth, async (req, res) => {
+  if (!["reception", "waiter"].includes(req.user.role)) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
   try {
     const table = await Table.findById(req.params.id);
     if (!table) {
       return res.status(404).json({ message: "Table not found" });
     }
-
-    if (waiterId) {
-      const waiter = await User.findById(waiterId);
-      if (
-        !waiter ||
-        waiter.role.toLowerCase() !== "waiter" ||
-        !waiter.isLoggedIn
-      ) {
-        return res
-          .status(400)
-          .json({ message: "Invalid or unavailable waiter" });
-      }
-      table.waiterId = waiterId;
-    }
-
-    if (customerName !== undefined) {
-      table.customerName = customerName;
-    }
-
+    const { customerName, waiterId } = req.body;
+    if (customerName !== undefined) table.customerName = customerName;
+    if (waiterId !== undefined) table.waiterId = waiterId;
     await table.save();
-    const populatedTable = await Table.findById(req.params.id)
-      .populate("waiterId", "name")
-      .populate("orders.menuItemId", "name price category");
-    res.json(populatedTable);
-  } catch (error) {
-    console.error("Update table error:", error);
+    res.json(table);
+  } catch (err) {
+    console.error("Update table error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 // Delete a table (reception only)
 router.delete("/:id", auth, async (req, res) => {
-  if (req.user.role.toLowerCase() !== "reception") {
-    return res.status(403).json({ message: "Access denied" });
+  if (req.user.role !== "reception") {
+    return res.status(403).json({ message: "Unauthorized" });
   }
-
   try {
     const table = await Table.findById(req.params.id);
     if (!table) {
       return res.status(404).json({ message: "Table not found" });
     }
-
-    if (!table.isPaid) {
-      return res
-        .status(400)
-        .json({ message: "Cannot delete table with unpaid bill" });
-    }
-
-    await table.deleteOne();
+    await table.remove();
     res.json({ message: "Table deleted" });
-  } catch (error) {
-    console.error("Delete table error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Add order to a table (waiter only)
-router.post("/:id/orders", auth, async (req, res) => {
-  const { menuItemId, quantity, waiterId } = req.body;
-
-  if (req.user.role.toLowerCase() !== "waiter") {
-    return res.status(403).json({ message: "Access denied" });
-  }
-
-  try {
-    const table = await Table.findById(req.params.id);
-    if (!table) {
-      return res.status(404).json({ message: "Table not found" });
-    }
-
-    const waiter = await User.findById(waiterId);
-    if (
-      !waiter ||
-      waiter.role.toLowerCase() !== "waiter" ||
-      !waiter.isLoggedIn
-    ) {
-      return res.status(400).json({ message: "Invalid or unavailable waiter" });
-    }
-
-    const menuItem = await Menu.findById(menuItemId);
-    if (!menuItem) {
-      return res.status(400).json({ message: "Menu item not found" });
-    }
-
-    table.orders.push({ menuItemId, quantity, waiterId });
-    table.totalBill += menuItem.price * quantity;
-    await table.save();
-
-    const populatedTable = await Table.findById(req.params.id)
-      .populate("waiterId", "name")
-      .populate("orders.menuItemId", "name price category");
-    res.json(populatedTable);
-  } catch (error) {
-    console.error("Add order error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Pay bill for a table (reception only)
-router.post("/:id/pay", auth, async (req, res) => {
-  if (req.user.role.toLowerCase() !== "reception") {
-    return res.status(403).json({ message: "Access denied" });
-  }
-
-  try {
-    const table = await Table.findById(req.params.id);
-    if (!table) {
-      return res.status(404).json({ message: "Table not found" });
-    }
-
-    if (table.isPaid) {
-      return res.status(400).json({ message: "Bill already paid" });
-    }
-
-    table.isPaid = true;
-    await table.save();
-
-    res.json(table);
-  } catch (error) {
-    console.error("Pay bill error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Get all tables (reception and waiter)
-router.get("/", auth, async (req, res) => {
-  if (
-    !["reception", "waiter"]
-      .map((r) => r.toLowerCase())
-      .includes(req.user.role.toLowerCase())
-  ) {
-    return res.status(403).json({ message: "Access denied" });
-  }
-
-  try {
-    const tables = await Table.find()
-      .populate("waiterId", "name")
-      .populate("orders.menuItemId", "name price category");
-    res.json(tables);
-  } catch (error) {
-    console.error("Get tables error:", error);
+  } catch (err) {
+    console.error("Delete table error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });

@@ -1,103 +1,55 @@
 const express = require("express");
 const router = express.Router();
-const Menu = require("../models/Menu");
 const auth = require("../middleware/auth");
+const Menu = require("../models/Menu");
 
-// Add a menu item (reception only)
+// Create a menu item (reception only)
 router.post("/", auth, async (req, res) => {
-  const { name, price, category } = req.body;
-
-  if (req.user.role.toLowerCase() !== "reception") {
-    return res.status(403).json({ message: "Access denied" });
+  if (req.user.role !== "reception") {
+    return res.status(403).json({ message: "Unauthorized" });
   }
-
-  if (!["Food", "Drinks"].includes(category)) {
-    return res.status(400).json({ message: "Invalid category" });
-  }
-
   try {
-    const existingItem = await Menu.findOne({ name, category });
-    if (existingItem) {
+    const { name, price, category, ml } = req.body;
+    if (!name || !price || isNaN(price) || price <= 0) {
       return res
         .status(400)
-        .json({ message: "Item already exists in this category" });
+        .json({ message: "Name and valid price are required" });
     }
-
-    const menuItem = new Menu({ name, price, category });
+    if (!["Veg", "Non-Veg", "Drinks", "Beverages"].includes(category)) {
+      return res.status(400).json({ message: "Invalid category" });
+    }
+    if (category === "Beverages") {
+      if (!ml || isNaN(ml) || ml <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Valid ml value required for Beverages" });
+      }
+    } else if (ml) {
+      return res
+        .status(400)
+        .json({ message: "ml field only allowed for Beverages" });
+    }
+    const menuItem = new Menu({
+      name,
+      price,
+      category,
+      ...(category === "Beverages" && { ml }),
+    });
     await menuItem.save();
-
     res.status(201).json(menuItem);
-  } catch (error) {
-    console.error("Add menu item error:", error);
+  } catch (err) {
+    console.error("Create menu item error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// Update a menu item (reception only)
-router.put("/:id", auth, async (req, res) => {
-  const { name, price, category } = req.body;
-
-  if (req.user.role.toLowerCase() !== "reception") {
-    return res.status(403).json({ message: "Access denied" });
-  }
-
-  if (category && !["Food", "Drinks"].includes(category)) {
-    return res.status(400).json({ message: "Invalid category" });
-  }
-
-  try {
-    const menuItem = await Menu.findById(req.params.id);
-    if (!menuItem) {
-      return res.status(404).json({ message: "Menu item not found" });
-    }
-
-    if (name) menuItem.name = name;
-    if (price !== undefined) menuItem.price = price;
-    if (category) menuItem.category = category;
-
-    await menuItem.save();
-    res.json(menuItem);
-  } catch (error) {
-    console.error("Update menu item error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Delete a menu item (reception only)
-router.delete("/:id", auth, async (req, res) => {
-  if (req.user.role.toLowerCase() !== "reception") {
-    return res.status(403).json({ message: "Access denied" });
-  }
-
-  try {
-    const menuItem = await Menu.findById(req.params.id);
-    if (!menuItem) {
-      return res.status(404).json({ message: "Menu item not found" });
-    }
-
-    await menuItem.deleteOne();
-    res.json({ message: "Menu item deleted" });
-  } catch (error) {
-    console.error("Delete menu item error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-// Get all menu items (reception and waiter)
+// Get all menu items
 router.get("/", auth, async (req, res) => {
-  if (
-    !["reception", "waiter"]
-      .map((r) => r.toLowerCase())
-      .includes(req.user.role.toLowerCase())
-  ) {
-    return res.status(403).json({ message: "Access denied" });
-  }
-
   try {
-    const menuItems = await Menu.find().sort({ category: 1, name: 1 });
+    const menuItems = await Menu.find();
     res.json(menuItems);
-  } catch (error) {
-    console.error("Get menu items error:", error);
+  } catch (err) {
+    console.error("Fetch menu items error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
